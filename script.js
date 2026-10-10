@@ -1,6 +1,6 @@
 // ==========================================
 // محوّل الكلام إلى نص — جمعية حنطة الخيرية التنموية
-// النسخة النهائية الكاملة مع تصدير PDF
+// نسخة متوافقة مع الجوال (مُصلَحة)
 // ==========================================
 
 // ==========================================
@@ -9,16 +9,15 @@
 let recognition = null;
 let isRecording = false;
 let finalTranscript = '';
-let audioContext = null;
-let mediaStream = null;
-let gainNode = null;
-let analyser = null;
-let animationFrameId = null;
-let currentGain = 3;
+let restartAttempts = 0;
+const MAX_RESTART_ATTEMPTS = 50;
 
-// متغيرات Whisper (لمعالجة الملفات الصوتية)
+// متغيرات Whisper
 let whisperPipeline = null;
 let whisperLoading = false;
+
+// كشف نوع الجهاز
+const isMobile = /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent);
 
 // ==========================================
 // 2. عناصر الصفحة
@@ -56,7 +55,6 @@ let toastTimeout = null;
 function showToast(message, duration = 2500) {
     toastEl.textContent = message;
     toastEl.classList.remove('hidden');
-
     if (toastTimeout) clearTimeout(toastTimeout);
     toastTimeout = setTimeout(() => {
         toastEl.classList.add('hidden');
@@ -71,7 +69,6 @@ function showProgress(label, percent) {
     progressLabel.textContent = label;
     progressPercent.textContent = percent + '%';
     progressFill.style.width = percent + '%';
-
     if (percent >= 100) {
         progressFill.classList.add('complete');
     } else {
@@ -97,7 +94,7 @@ function initSpeechRecognition() {
         window.SpeechRecognition || window.webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-        showError('متصفحك لا يدعم التعرف على الكلام. استخدم Google Chrome أو Microsoft Edge.');
+        showError('متصفحك لا يدعم التعرف على الكلام. استخدم Google Chrome على Android أو Safari على iPhone.');
         return false;
     }
 
@@ -109,6 +106,7 @@ function initSpeechRecognition() {
 
     recognition.onstart = () => {
         isRecording = true;
+        restartAttempts = 0;
         updateUI(true);
         statusEl.textContent = '🔴 جارٍ التسجيل... تحدث الآن بوضوح';
         statusEl.className = 'status-box recording';
@@ -116,20 +114,16 @@ function initSpeechRecognition() {
 
     recognition.onresult = (event) => {
         let interimText = '';
-
         for (let i = event.resultIndex; i < event.results.length; i++) {
             const transcript = event.results[i][0].transcript;
-
             if (event.results[i].isFinal) {
                 finalTranscript += transcript + ' ';
             } else {
                 interimText += transcript;
             }
         }
-
         transcriptEl.textContent = finalTranscript.trim() || 'سيظهر النص هنا...';
         interimEl.textContent = interimText;
-
         const hasText = finalTranscript.trim().length > 0;
         viewBtn.disabled = !hasText;
         copyBtn.disabled = !hasText;
@@ -140,26 +134,48 @@ function initSpeechRecognition() {
     recognition.onerror = (event) => {
         console.error('خطأ في التعرف على الكلام:', event.error);
 
-        if (event.error === 'not-allowed') {
-            showError('تم رفض الوصول إلى الميكروفون. يرجى السماح بالوصول.');
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+            showError('تم رفض الوصول إلى الميكروفون. يرجى السماح بالوصول من إعدادات المتصفح.');
+            isRecording = false;
         } else if (event.error === 'no-speech') {
-            // لا يوجد كلام، تجاهل
+            // لا يوجد كلام، تجاهل — إعادة التشغيل ستتم في onend
         } else if (event.error === 'aborted') {
-            // تم الإيقاف يدوياً، تجاهل
+            // تم الإيقاف يدوياً
         } else if (event.error === 'network') {
             showError('مشكلة في الاتصال بالشبكة. تحقق من الإنترنت.');
+        } else if (event.error === 'audio-capture') {
+            showError('تعذر الوصول إلى الميكروفون. تأكد من عدم استخدامه بواسطة تطبيق آخر.');
         } else {
             showError('حدث خطأ: ' + event.error);
         }
     };
 
+    // 🎯 هذا هو الإصلاح الأهم: إعادة التشغيل التلقائي على الجوال
     recognition.onend = () => {
-        if (isRecording) {
-            try {
-                recognition.start();
-            } catch (e) {
-                console.log('إعادة التشغيل التلقائي:', e);
-            }
+        if (isRecording && restartAttempts < MAX_RESTART_ATTEMPTS) {
+            restartAttempts++;
+            // تأخير بسيط لمنع الحلقة اللانهائية السريعة
+            setTimeout(() => {
+                if (isRecording) {
+                    try {
+                        recognition.start();
+                    } catch (e) {
+                        console.log('فشل إعادة التشغيل:', e);
+                        // إذا فشل 3 مرات متتالية، أوقف
+                        if (restartAttempts > 3) {
+                            isRecording = false;
+                            statusEl.textContent = '⚠️ توقف التسجيل. اضغط "بدء" مرة أخرى.';
+                            statusEl.className = 'status-box error';
+                            updateUI(false);
+                        }
+                    }
+                }
+            }, 100);
+        } else if (isRecording) {
+            isRecording = false;
+            statusEl.textContent = '⏹️ تم إيقاف التسجيل';
+            statusEl.className = 'status-box';
+            updateUI(false);
         }
     };
 
@@ -167,68 +183,7 @@ function initSpeechRecognition() {
 }
 
 // ==========================================
-// 6. تضخيم الصوت وزيادة الحساسية
-// ==========================================
-async function setupMicrophoneGain(stream) {
-    try {
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        mediaStream = stream;
-
-        const source = audioContext.createMediaStreamSource(stream);
-
-        gainNode = audioContext.createGain();
-        gainNode.gain.value = currentGain;
-
-        analyser = audioContext.createAnalyser();
-        analyser.fftSize = 512;
-
-        source.connect(analyser);
-        source.connect(gainNode);
-
-        adjustGainDynamically();
-
-        console.log('✅ تضخيم الصوت مفعّل:', currentGain + 'x');
-    } catch (e) {
-        console.warn('⚠️ تعذر تفعيل تضخيم الصوت:', e);
-    }
-}
-
-function adjustGainDynamically() {
-    if (!analyser || !gainNode) return;
-
-    const bufferLength = analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-
-    function update() {
-        if (!isRecording) return;
-
-        analyser.getByteFrequencyData(dataArray);
-        const avgVolume = dataArray.reduce((a, b) => a + b, 0) / bufferLength;
-
-        if (sensitivityToggle.checked) {
-            // وضع التقاط الهمس — كسب مضاعف ثابت
-            gainNode.gain.value = Math.min(currentGain * 2, 15);
-        } else {
-            if (avgVolume < 10) {
-                gainNode.gain.value = Math.min(currentGain * 2, 15);
-            } else if (avgVolume < 25) {
-                gainNode.gain.value = Math.min(currentGain * 1.5, 12);
-            } else if (avgVolume < 50) {
-                gainNode.gain.value = currentGain;
-            } else {
-                gainNode.gain.value = Math.max(currentGain * 0.8, 1);
-            }
-        }
-
-        gainValue.textContent = gainNode.gain.value.toFixed(1) + 'x';
-        animationFrameId = requestAnimationFrame(update);
-    }
-
-    update();
-}
-
-// ==========================================
-// 7. بدء التسجيل المباشر
+// 6. بدء التسجيل المباشر (بدون getUserMedia مزدوج)
 // ==========================================
 async function startRecording() {
     if (whisperLoading) {
@@ -236,57 +191,64 @@ async function startRecording() {
         return;
     }
 
+    // 🎯 إذا كان هناك تسجيل قيد التشغيل، أوقفه أولاً
+    if (isRecording) {
+        stopRecording();
+        await new Promise(r => setTimeout(r, 300));
+    }
+
     try {
-        mediaStream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: false
-            }
-        });
-
-        await setupMicrophoneGain(mediaStream);
-
+        // إنشاء كائن التعرف إذا لم يكن موجوداً
         if (!recognition) {
             if (!initSpeechRecognition()) return;
         }
 
+        // تحديث اللغة
         recognition.lang = languageSelect.value;
+
+        // 🎯 طلب صلاحية الميكروفون أولاً (مهم للجوال)
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            try {
+                // طلب الصلاحية فقط، ثم إغلاق المسار فوراً
+                const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                tempStream.getTracks().forEach(track => track.stop());
+                // تأخير صغير للسماح للنظام بتحرير الميكروفون
+                await new Promise(r => setTimeout(r, 200));
+            } catch (permError) {
+                console.warn('تعذر الحصول على صلاحية الميكروفون:', permError);
+                showError('يجب السماح بالوصول إلى الميكروفون لتشغيل التسجيل.');
+                return;
+            }
+        }
+
+        isRecording = true;
+        restartAttempts = 0;
+
+        // 🎯 بدء التعرف مباشرة (بدون Web Audio)
         recognition.start();
+
+        statusEl.textContent = '🔴 جارٍ التسجيل... تحدث الآن بوضوح';
+        statusEl.className = 'status-box recording';
+        updateUI(true);
 
     } catch (e) {
         console.error('خطأ في بدء التسجيل:', e);
-        showError('تعذر الوصول إلى الميكروفون. يرجى السماح بالوصول.');
+        isRecording = false;
+        showError('تعذر بدء التسجيل: ' + e.message);
+        updateUI(false);
     }
 }
 
 // ==========================================
-// 8. إيقاف التسجيل
+// 7. إيقاف التسجيل
 // ==========================================
 function stopRecording() {
     isRecording = false;
+    restartAttempts = 0;
 
     if (recognition) {
         try { recognition.stop(); } catch (e) {}
     }
-
-    if (animationFrameId) {
-        cancelAnimationFrame(animationFrameId);
-        animationFrameId = null;
-    }
-
-    if (audioContext) {
-        audioContext.close();
-        audioContext = null;
-    }
-
-    if (mediaStream) {
-        mediaStream.getTracks().forEach(track => track.stop());
-        mediaStream = null;
-    }
-
-    gainNode = null;
-    analyser = null;
 
     updateUI(false);
     statusEl.textContent = '⏹️ تم إيقاف التسجيل';
@@ -294,7 +256,7 @@ function stopRecording() {
 }
 
 // ==========================================
-// 9. تحديث الواجهة
+// 8. تحديث الواجهة
 // ==========================================
 function updateUI(recording) {
     startBtn.disabled = recording;
@@ -309,7 +271,7 @@ function showError(message) {
 }
 
 // ==========================================
-// 10. عرض النص الكامل
+// 9. عرض النص الكامل
 // ==========================================
 function showFullText() {
     modalText.textContent = finalTranscript.trim() || 'لا يوجد نص لعرضه';
@@ -317,7 +279,7 @@ function showFullText() {
 }
 
 // ==========================================
-// 11. نسخ النص
+// 10. نسخ النص
 // ==========================================
 async function copyTranscript() {
     const text = finalTranscript.trim();
@@ -344,7 +306,7 @@ async function copyTranscript() {
 }
 
 // ==========================================
-// 12. مسح النص
+// 11. مسح النص
 // ==========================================
 function clearTranscript() {
     if (isRecording) return;
@@ -364,7 +326,7 @@ function clearTranscript() {
 }
 
 // ==========================================
-// 12.b تصدير النص إلى ملف PDF
+// 12. تصدير PDF
 // ==========================================
 async function exportToPDF() {
     const text = finalTranscript.trim();
@@ -378,14 +340,12 @@ async function exportToPDF() {
     statusEl.className = 'status-box processing';
 
     try {
-        // تحميل مكتبة html2pdf ديناميكياً من CDN
         if (!window.html2pdf) {
             await loadScript(
                 'https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js'
             );
         }
 
-        // إنشاء حاوية منسقة للـ PDF
         const pdfContainer = document.createElement('div');
         pdfContainer.dir = 'rtl';
         pdfContainer.style.cssText = `
@@ -399,7 +359,6 @@ async function exportToPDF() {
             background: #fff;
         `;
 
-        // ترويسة PDF
         const today = new Date().toLocaleDateString('ar-EG', {
             year: 'numeric',
             month: 'long',
@@ -426,28 +385,17 @@ async function exportToPDF() {
             </div>
         `;
 
-        // اسم الملف
         const fileName = `محاضرة_${new Date().toISOString().slice(0, 10)}.pdf`;
 
-        // إعدادات PDF
         const options = {
             margin: [10, 10, 10, 10],
             filename: fileName,
             image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: {
-                scale: 2,
-                useCORS: true,
-                letterRendering: true
-            },
-            jsPDF: {
-                unit: 'mm',
-                format: 'a4',
-                orientation: 'portrait'
-            },
+            html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
             pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
         };
 
-        // إنشاء وتحميل الملف
         await window.html2pdf().set(options).from(pdfContainer).save();
 
         statusEl.textContent = '✅ تم تصدير ملف PDF بنجاح';
@@ -462,7 +410,6 @@ async function exportToPDF() {
     }
 }
 
-// دالة مساعدة لتحميل السكربتات ديناميكياً
 function loadScript(src) {
     return new Promise((resolve, reject) => {
         const script = document.createElement('script');
@@ -473,7 +420,6 @@ function loadScript(src) {
     });
 }
 
-// دالة مساعدة لتأمين النص من HTML
 function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str;
@@ -494,7 +440,7 @@ async function loadWhisperModel() {
     }
 
     whisperLoading = true;
-    showProgress('جارٍ تحميل نموذج التعرف (قد يستغرق دقيقة في المرة الأولى)...', 0);
+    showProgress('جارٍ تحميل نموذج التعرف (قد يستغرق دقيقة)...', 0);
 
     try {
         const { pipeline, env } = await import(
@@ -512,10 +458,7 @@ async function loadWhisperModel() {
                 progress_callback: (data) => {
                     if (data.status === 'progress' && data.progress) {
                         const pct = Math.round(data.progress);
-                        showProgress(
-                            `جارٍ تحميل النموذج: ${data.file || ''}`,
-                            pct
-                        );
+                        showProgress(`جارٍ تحميل النموذج: ${data.file || ''}`, pct);
                     } else if (data.status === 'ready') {
                         showProgress('النموذج جاهز ✅', 100);
                     }
@@ -580,11 +523,9 @@ async function processAudioFile(file) {
 
     const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
 
-    // إزالة معلومات ملف سابقة
     const oldInfo = document.getElementById('currentFileInfo');
     if (oldInfo) oldInfo.remove();
 
-    // عرض معلومات الملف
     const fileInfo = document.createElement('div');
     fileInfo.className = 'file-info';
     fileInfo.id = 'currentFileInfo';
@@ -610,7 +551,6 @@ async function processAudioFile(file) {
         const durationSec = (audioData.length / 16000).toFixed(1);
         showProgress(`جارٍ التعرف على الكلام (مدة الملف: ${durationSec} ثانية)...`, 30);
 
-        // تحديد اللغة بناءً على الاختيار
         let whisperLang = 'arabic';
         if (languageSelect.value.startsWith('en')) whisperLang = 'english';
         else if (languageSelect.value.startsWith('fr')) whisperLang = 'french';
@@ -664,18 +604,13 @@ async function processAudioFile(file) {
 // ==========================================
 // 16. ربط الأحداث
 // ==========================================
-
-// الأزرار الرئيسية
 startBtn.addEventListener('click', startRecording);
 stopBtn.addEventListener('click', stopRecording);
-
-// الأزرار السفلية
 viewBtn.addEventListener('click', showFullText);
 copyBtn.addEventListener('click', copyTranscript);
 pdfBtn.addEventListener('click', exportToPDF);
 clearBtn.addEventListener('click', clearTranscript);
 
-// النافذة المنبثقة
 closeModal.addEventListener('click', () => modal.classList.add('hidden'));
 modalCloseBtn.addEventListener('click', () => modal.classList.add('hidden'));
 modalCopyBtn.addEventListener('click', async () => {
@@ -687,32 +622,26 @@ modal.addEventListener('click', (e) => {
     if (e.target === modal) modal.classList.add('hidden');
 });
 
-// تغيير اللغة
 languageSelect.addEventListener('change', () => {
     if (recognition && !isRecording) {
         recognition.lang = languageSelect.value;
     }
 });
 
-// شريط الحساسية
+// 🎯 شريط الحساسية أصبح للعرض فقط (لا يؤثر على التعرف الفعلي)
 gainSlider.addEventListener('input', (e) => {
     currentGain = parseFloat(e.target.value);
     gainValue.textContent = currentGain + 'x';
-    if (gainNode && !sensitivityToggle.checked) {
-        gainNode.gain.value = currentGain;
-    }
 });
 
-// تفعيل وضع الهمس
 sensitivityToggle.addEventListener('change', () => {
     if (sensitivityToggle.checked) {
-        showToast('🔊 وضع التقاط الهمس مفعّل');
+        showToast('🔊 وضع التقاط الهمس مفعّل — اقترب من المتحدث');
     } else {
         showToast('🔉 وضع التقاط الهمس معطّل');
     }
 });
 
-// زر تحميل الملف الصوتي
 uploadBtn.addEventListener('click', () => {
     if (isRecording) {
         showToast('⚠️ يرجى إيقاف التسجيل المباشر أولاً');
@@ -726,11 +655,7 @@ fileInput.addEventListener('change', (e) => {
     if (file) processAudioFile(file);
 });
 
-// السحب والإفلات
-document.addEventListener('dragover', (e) => {
-    e.preventDefault();
-});
-
+document.addEventListener('dragover', (e) => e.preventDefault());
 document.addEventListener('drop', (e) => {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
@@ -739,9 +664,7 @@ document.addEventListener('drop', (e) => {
     }
 });
 
-// اختصارات لوحة المفاتيح
 document.addEventListener('keydown', (e) => {
-    // Escape لإغلاق النافذة
     if (e.key === 'Escape' && !modal.classList.contains('hidden')) {
         modal.classList.add('hidden');
     }
@@ -755,19 +678,18 @@ window.addEventListener('load', () => {
         window.SpeechRecognition || window.webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-        showError('متصفحك لا يدعم التعرف المباشر على الكلام. استخدم Google Chrome أو Microsoft Edge. يمكنك مع ذلك استخدام ميزة تحميل الملفات الصوتية.');
+        showError('متصفحك لا يدعم التعرف المباشر على الكلام. استخدم Google Chrome على Android أو Safari على iPhone.');
+    } else if (isMobile) {
+        statusEl.textContent = '📱 أنت على الجوال — اضغط "بدء التسجيل" ووافق على صلاحية الميكروفون';
+        statusEl.className = 'status-box';
     }
 
-    // تحديث سنة الحقوق في التذييل
     const yearEl = document.getElementById('currentYear');
     if (yearEl) {
         yearEl.textContent = new Date().getFullYear();
     }
 });
 
-// ==========================================
-// 18. تنظيف عند إغلاق الصفحة
-// ==========================================
 window.addEventListener('beforeunload', () => {
     if (isRecording) stopRecording();
 });
