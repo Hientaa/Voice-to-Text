@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>محوّل الكلام إلى نص | جمعية حنطة الخيرية التنموية</title>
+    <meta name="description" content="أداة مجانية لتحويل الكلام والمحاضرات إلى نص مكتوب - جمعية حنطة الخيرية التنموية">
+    <meta name="author" content="جمعية حنطة الخيرية التنموية">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+
+        <!-- ==========================================
+             ترويسة الجمعية
+             ========================================== -->
+        <div class="org-header">
+            <div class="org-logo">
+                <span class="logo-icon">🌾</span>
+            </div>
+            <div class="org-info">
+                <h2 class="org-name">جمعية حنطة الخيرية التنموية</h2>
+                <p class="org-tagline">معاً نصنع فرقاً في حياة الطلاب</p>
+            </div>
+        </div>
+
+        <!-- ==========================================
+             عنوان التطبيق
+             ========================================== -->
+        <header>
+            <h1>🎙️ محوّل الكلام إلى نص</h1>
+            <p class="subtitle">أداة مجانية لتفريغ المحاضرات والدروس — تقدّمها جمعية حنطة لطلابها</p>
+        </header>
+
+        <!-- لوحة التحكم -->
+        <div class="controls-panel">
+            <div class="control-group">
+                <label for="language">اللغة:</label>
+                <select id="language">
+                    <option value="ar-SA" selected>العربية (فصحى)</option>
+                    <option value="ar-EG">العربية (مصر)</option>
+                    <option value="ar-AE">العربية (الإمارات)</option>
+                    <option value="ar-MA">العربية (المغرب)</option>
+                    <option value="en-US">English (US)</option>
+                    <option value="fr-FR">Français</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label for="gainSlider">حساسية الميكروفون:</label>
+                <input type="range" id="gainSlider" min="1" max="10" value="3" step="0.5">
+                <span id="gainValue">3x</span>
+            </div>
+
+            <div class="control-group">
+                <label for="sensitivityToggle">وضع التقاط الهمس:</label>
+                <input type="checkbox" id="sensitivityToggle">
+            </div>
+        </div>
+
+        <!-- أزرار التحكم الرئيسية -->
+        <div class="main-controls">
+            <button id="startBtn" class="btn primary">
+                <span class="icon">🎤</span> بدء التسجيل المباشر
+            </button>
+            <button id="stopBtn" class="btn danger" disabled>
+                <span class="icon">⏹️</span> إيقاف التسجيل
+            </button>
+            <button id="uploadBtn" class="btn upload">
+                <span class="icon">📁</span> تحميل ملف صوتي
+            </button>
+            <input type="file" id="fileInput" accept="audio/*" hidden>
+        </div>
+
+        <!-- شريط تقدم معالجة الملف الصوتي -->
+        <div id="fileProgress" class="file-progress hidden">
+            <div class="progress-info">
+                <span id="progressLabel">جارٍ التحميل...</span>
+                <span id="progressPercent">0%</span>
+            </div>
+            <div class="progress-bar">
+                <div id="progressFill" class="progress-fill"></div>
+            </div>
+        </div>
+
+        <!-- حالة التسجيل -->
+        <div id="status" class="status-box">
+            اضغط "بدء التسجيل المباشر" أو حمّل ملفاً صوتياً للبدء
+        </div>
+
+        <!-- منطقة عرض النص -->
+        <div class="transcript-area">
+            <div id="transcript" class="transcript-text" dir="rtl">
+                سيظهر النص هنا...
+            </div>
+            <div id="interim" class="interim-text"></div>
+        </div>
+
+        <!-- الأزرار السفلية -->
+        <div class="bottom-controls">
+            <button id="viewBtn" class="btn secondary" disabled>
+                <span class="icon">📄</span> عرض النص
+            </button>
+            <button id="copyBtn" class="btn secondary" disabled>
+                <span class="icon">📋</span> نسخ النص
+            </button>
+            <button id="clearBtn" class="btn outline" disabled>
+                <span class="icon">🗑️</span> مسح
+            </button>
+        </div>
+
+        <!-- ==========================================
+             التذييل — معلومات الجمعية وكادر التطوير
+             ========================================== -->
+        <footer class="org-footer">
+            <div class="footer-section">
+                <h3 class="footer-title">
+                    <span class="footer-icon">🌾</span>
+                    جمعية حنطة الخيرية التنموية
+                </h3>
+                <p class="footer-desc">
+                    جمعية خيرية تنموية تعمل على تمكين الطلاب ودعم مسيرتهم التعليمية،
+                    من خلال توفير الأدوات والموارد التي تساهم في بناء جيل متعلم ومبدع.
+                </p>
+            </div>
+
+            <div class="footer-divider"></div>
+
+            <div class="footer-section">
+                <h4 class="footer-subtitle">💻 كادر التطوير</h4>
+                <p class="footer-team">
+                    تم تطوير هذا التطبيق بمجهود تطوعي من كادر جمعية حنطة الخيرية التنموية،
+                    ليصل مجاناً إلى كل طالب محتاج.
+                </p>
+                <div class="team-badges">
+                    <span class="badge">👨‍💻 فريق البرمجة</span>
+                    <span class="badge">🎨 فريق التصميم</span>
+                    <span class="badge">📚 فريق المحتوى</span>
+                    <span class="badge">🤝 فريق الدعم</span>
+                </div>
+            </div>
+
+            <div class="footer-divider"></div>
+
+            <div class="footer-section footer-meta">
+                <p class="footer-values">
+                    <span>💚 مجاني بالكامل</span>
+                    <span>🔒 خصوصية تامة</span>
+                    <span>🌐 يعمل دون تثبيت</span>
+                </p>
+                <p class="footer-copyright">
+                    © <span id="currentYear"></span> جمعية حنطة الخيرية التنموية — جميع الحقوق محفوظة
+                </p>
+            </div>
+        </footer>
+    </div>
+
+    <!-- نافذة عرض النص الكامل -->
+    <div id="modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📄 النص الكامل</h2>
+                <button id="closeModal" class="close-btn">&times;</button>
+            </div>
+            <div id="modalText" class="modal-body" dir="rtl"></div>
+            <div class="modal-footer">
+                <button id="modalCopyBtn" class="btn primary">📋 نسخ النص</button>
+                <button id="modalCloseBtn" class="btn secondary">إغلاق</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- إشعار Toast -->
+    <div id="toast" class="toast hidden"></div>
+
+    <script src="script.js"></script>
+</body>
+</html>
