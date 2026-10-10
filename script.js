@@ -1,6 +1,6 @@
 // ==========================================
 // محوّل الكلام إلى نص — جمعية حنطة الخيرية التنموية
-// النسخة النهائية الكاملة
+// النسخة النهائية الكاملة مع تصدير PDF
 // ==========================================
 
 // ==========================================
@@ -29,6 +29,7 @@ const uploadBtn = document.getElementById('uploadBtn');
 const fileInput = document.getElementById('fileInput');
 const viewBtn = document.getElementById('viewBtn');
 const copyBtn = document.getElementById('copyBtn');
+const pdfBtn = document.getElementById('pdfBtn');
 const clearBtn = document.getElementById('clearBtn');
 const transcriptEl = document.getElementById('transcript');
 const interimEl = document.getElementById('interim');
@@ -132,6 +133,7 @@ function initSpeechRecognition() {
         const hasText = finalTranscript.trim().length > 0;
         viewBtn.disabled = !hasText;
         copyBtn.disabled = !hasText;
+        pdfBtn.disabled = !hasText;
         clearBtn.disabled = !hasText;
     };
 
@@ -352,12 +354,130 @@ function clearTranscript() {
     interimEl.textContent = '';
     viewBtn.disabled = true;
     copyBtn.disabled = true;
+    pdfBtn.disabled = true;
     clearBtn.disabled = true;
 
     const oldInfo = document.getElementById('currentFileInfo');
     if (oldInfo) oldInfo.remove();
 
     showToast('🗑️ تم مسح النص');
+}
+
+// ==========================================
+// 12.b تصدير النص إلى ملف PDF
+// ==========================================
+async function exportToPDF() {
+    const text = finalTranscript.trim();
+    if (!text) {
+        showToast('⚠️ لا يوجد نص لتصديره');
+        return;
+    }
+
+    pdfBtn.disabled = true;
+    statusEl.textContent = '📥 جارٍ إنشاء ملف PDF...';
+    statusEl.className = 'status-box processing';
+
+    try {
+        // تحميل مكتبة html2pdf ديناميكياً من CDN
+        if (!window.html2pdf) {
+            await loadScript(
+                'https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js'
+            );
+        }
+
+        // إنشاء حاوية منسقة للـ PDF
+        const pdfContainer = document.createElement('div');
+        pdfContainer.dir = 'rtl';
+        pdfContainer.style.cssText = `
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            direction: rtl;
+            text-align: right;
+            padding: 40px;
+            color: #333;
+            line-height: 1.9;
+            font-size: 14pt;
+            background: #fff;
+        `;
+
+        // ترويسة PDF
+        const today = new Date().toLocaleDateString('ar-EG', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+
+        pdfContainer.innerHTML = `
+            <div style="text-align: center; border-bottom: 3px solid #27ae60; padding-bottom: 15px; margin-bottom: 25px;">
+                <h1 style="color: #1b5e20; font-size: 20pt; margin: 0 0 8px 0; font-weight: bold;">
+                    🌾 جمعية حنطة الخيرية التنموية
+                </h1>
+                <p style="color: #4a7c59; font-size: 11pt; margin: 0;">
+                    محوّل الكلام إلى نص — تفريغ المحاضرات والدروس
+                </p>
+                <p style="color: #888; font-size: 9pt; margin: 8px 0 0 0;">
+                    تاريخ الإنشاء: ${today}
+                </p>
+            </div>
+            <div style="white-space: pre-wrap; word-wrap: break-word; text-align: right; direction: rtl; min-height: 200px;">
+                ${escapeHtml(text)}
+            </div>
+            <div style="margin-top: 30px; padding-top: 15px; border-top: 1px solid #ddd; text-align: center; color: #888; font-size: 9pt;">
+                © ${new Date().getFullYear()} جمعية حنطة الخيرية التنموية — جميع الحقوق محفوظة
+            </div>
+        `;
+
+        // اسم الملف
+        const fileName = `محاضرة_${new Date().toISOString().slice(0, 10)}.pdf`;
+
+        // إعدادات PDF
+        const options = {
+            margin: [10, 10, 10, 10],
+            filename: fileName,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: {
+                scale: 2,
+                useCORS: true,
+                letterRendering: true
+            },
+            jsPDF: {
+                unit: 'mm',
+                format: 'a4',
+                orientation: 'portrait'
+            },
+            pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+        };
+
+        // إنشاء وتحميل الملف
+        await window.html2pdf().set(options).from(pdfContainer).save();
+
+        statusEl.textContent = '✅ تم تصدير ملف PDF بنجاح';
+        statusEl.className = 'status-box success';
+        showToast('✅ تم تحميل ملف PDF');
+
+    } catch (e) {
+        console.error('خطأ في تصدير PDF:', e);
+        showError('تعذر إنشاء ملف PDF: ' + e.message);
+    } finally {
+        pdfBtn.disabled = false;
+    }
+}
+
+// دالة مساعدة لتحميل السكربتات ديناميكياً
+function loadScript(src) {
+    return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = src;
+        script.onload = resolve;
+        script.onerror = () => reject(new Error('فشل تحميل المكتبة: ' + src));
+        document.head.appendChild(script);
+    });
+}
+
+// دالة مساعدة لتأمين النص من HTML
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
 }
 
 // ==========================================
@@ -517,6 +637,7 @@ async function processAudioFile(file) {
             transcriptEl.textContent = finalTranscript.trim();
             viewBtn.disabled = false;
             copyBtn.disabled = false;
+            pdfBtn.disabled = false;
             clearBtn.disabled = false;
 
             statusEl.textContent = '✅ تم تحويل الملف الصوتي بنجاح';
@@ -551,6 +672,7 @@ stopBtn.addEventListener('click', stopRecording);
 // الأزرار السفلية
 viewBtn.addEventListener('click', showFullText);
 copyBtn.addEventListener('click', copyTranscript);
+pdfBtn.addEventListener('click', exportToPDF);
 clearBtn.addEventListener('click', clearTranscript);
 
 // النافذة المنبثقة
